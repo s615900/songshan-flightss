@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSA 松山機場即時航班看板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --gold:#c9a45c; --gold-dim:#8d7444;
+    --scr:#0a1a6b; --scr2:#0b2290; --row:#1238c9; --hd:#06115a;
+    --chip:#1f62ff; --chip2:#9fd2ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Noto Sans TC",system-ui,sans-serif;
+    background:radial-gradient(120% 90% at 50% 0%,#e9ecef 0%,#c7ccd1 55%,#8f8a80 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:100%;padding:24px 12px;gap:18px;color:#111;
+  }
+  /* ---------- 機身 ---------- */
+  .device{
+    width:min(100%,980px);aspect-ratio:16/9.6;container-type:inline-size;
+    background:linear-gradient(160deg,#2b2b2d 0%,#161617 45%,#0e0e0f 100%);
+    border-radius:2.2cqw;position:relative;
+    box-shadow:0 3cqw 5cqw -1cqw rgba(0,0,0,.55),inset 0 .25cqw .3cqw rgba(255,255,255,.08),inset 0 -.4cqw .6cqw rgba(0,0,0,.6);
+    display:grid;grid-template-columns:17% 1fr 17%;align-items:stretch;padding:3.2cqw 0;
+  }
+  .device::after{ /* 霧面質感 */
+    content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background-image:radial-gradient(rgba(255,255,255,.035) 1px,transparent 1px);background-size:.5cqw .5cqw;
+  }
+  .side{position:relative;display:flex;flex-direction:column;align-items:center;color:var(--gold)}
+  .side svg{stroke:var(--gold);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+  .code{font-family:"Barlow Condensed";font-weight:700;font-size:6.6cqw;letter-spacing:.1cqw;line-height:1;margin-top:1.4cqw}
+  .sub{font-family:"Barlow Condensed";font-size:1.45cqw;line-height:1.15;text-align:center;margin-top:.6cqw;color:#d9bd84}
+  .sub b{display:block;font-family:"Noto Sans TC";font-weight:700;font-size:1.5cqw;letter-spacing:.2cqw;margin-top:.5cqw}
+  .rwy{font-family:"Barlow Condensed";font-weight:700;font-size:2.4cqw;position:absolute;bottom:0;right:3.6cqw}
+  /* ---------- 螢幕 ---------- */
+  .bezel{background:#050505;border-radius:.8cqw;padding:.9cqw;box-shadow:inset 0 0 .6cqw #000}
+  .screen{
+    height:100%;border-radius:.3cqw;overflow:hidden;position:relative;color:#fff;
+    background:linear-gradient(180deg,var(--scr2),var(--scr));
+    display:flex;flex-direction:column;
+  }
+  .screen::after{ /* 像素/反光 */
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(115deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,0) 38%),
+      repeating-linear-gradient(0deg,rgba(0,0,0,.08) 0 1px,transparent 1px 3px);
+  }
+  .top{display:flex;align-items:center;gap:1cqw;padding:1cqw 1.2cqw .4cqw}
+  .tab{font-weight:900;font-size:2.1cqw;padding:.15cqw .7cqw;border-radius:.3cqw;cursor:pointer;
+       background:transparent;color:#cfe3ff;border:.15cqw solid #4c7dff;font-family:inherit}
+  .tab.on{background:#fff;color:var(--scr2);border-color:#fff}
+  .title{font-weight:900;font-size:2.4cqw;letter-spacing:.15cqw;margin-left:.6cqw}
+  .clock{margin-left:auto;font-family:"Barlow Condensed";font-weight:700;font-size:2.6cqw;color:#ffe27a;letter-spacing:.1cqw}
+  .live{font-family:"Barlow Condensed";font-weight:700;font-size:1.3cqw;padding:.1cqw .5cqw;border-radius:.3cqw;background:#e3342f}
+  .live.demo{background:#f59e0b;color:#111}
+  .cols,.row{display:grid;grid-template-columns:13% 27% 15% 13% 12% 1fr;align-items:center;padding:0 1.2cqw;column-gap:.6cqw}
+  .cols{padding-top:.3cqw;padding-bottom:.5cqw;border-bottom:.15cqw solid rgba(255,255,255,.25)}
+  .cols div{font-weight:700;font-size:1.75cqw;line-height:1.05}
+  .cols small{display:block;font-family:"Barlow Condensed";font-weight:500;font-size:1.2cqw;color:#9fc0ff}
+  .rows{flex:1;display:flex;flex-direction:column;perspective:60cqw}
+  .row{flex:1;min-height:0;transform-origin:50% 0}
+  .row:nth-child(even){background:linear-gradient(90deg,var(--row),#1745e0 60%,var(--row))}
+  .row.flip{animation:flip .55s cubic-bezier(.3,.7,.3,1) both}
+  @keyframes flip{0%{transform:rotateX(-90deg);opacity:.2}60%{transform:rotateX(12deg);opacity:1}100%{transform:rotateX(0)}}
+  .t{font-family:"Barlow Condensed";font-weight:700;font-size:2.7cqw;line-height:1}
+  .t i{display:block;font-style:normal;font-size:1.4cqw;color:#ffe27a}
+  .dest{font-weight:700;font-size:2.5cqw;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dest small{display:block;font-family:"Barlow Condensed";font-weight:500;font-size:1.35cqw;color:#bcd3ff}
+  .fn{font-family:"Barlow Condensed";font-weight:600;font-size:2.2cqw;color:#dbe7ff}
+  .al{justify-self:start;font-family:"Barlow Condensed";font-weight:700;font-size:1.8cqw;background:var(--chip);
+      border-radius:.35cqw;padding:.15cqw .7cqw;min-width:4.6cqw;text-align:center;line-height:1.15}
+  .al small{display:block;font-family:"Noto Sans TC";font-size:1.05cqw;font-weight:500;line-height:1}
+  .gate{justify-self:start;font-family:"Barlow Condensed";font-weight:700;font-size:2.4cqw;color:var(--scr2);
+        background:var(--chip2);border-radius:.5cqw;min-width:4.4cqw;text-align:center;padding:.05cqw .5cqw}
+  .gate.empty{background:transparent;color:#7f9de0}
+  .st{font-weight:900;font-size:2.2cqw;white-space:nowrap}
+  .st.ok{color:#fff}.st.go{color:#7CFFB2}.st.board{color:#7CFFB2;animation:blink 1s steps(2) infinite}
+  .st.late{color:#ffd24d}.st.cxl{color:#ff6b6b}
+  @keyframes blink{50%{opacity:.25}}
+  .foot{display:flex;justify-content:space-between;align-items:center;padding:.45cqw 1.2cqw;background:var(--hd);
+        font-family:"Barlow Condensed";font-size:1.3cqw;color:#9fc0ff}
+  .dots span{display:inline-block;width:.8cqw;height:.8cqw;border-radius:50%;background:#33457d;margin-left:.4cqw}
+  .dots span.on{background:#ffe27a}
+  .empty-msg{flex:1;display:flex;align-items:center;justify-content:center;font-size:2.2cqw;color:#9fc0ff}
+  .note{max-width:980px;font-size:13px;color:#333;text-align:center;line-height:1.6}
+  .note code{background:rgba(0,0,0,.08);padding:1px 5px;border-radius:4px}
+  .fs{position:fixed;right:14px;bottom:14px;border:0;border-radius:999px;padding:8px 14px;font:600 13px "Noto Sans TC";
+      background:#111;color:var(--gold);cursor:pointer;opacity:.75}
+  body.full{padding:0;background:#000}
+  body.full .note,body.full .fs{display:none}
+  body.full .device{width:min(100vw,calc(100vh*16/9.6));border-radius:0}
+</style>
+</head>
+<body>
+
+<div class="device" id="dev">
+  <!-- 左側：TSA 識別 + 圓山大飯店剪影 -->
+  <div class="side">
+    <svg viewBox="0 0 60 60" style="width:7cqw;margin-top:.6cqw"><path d="M30 6v48M30 22 8 34v4l22-7 22 7v-4L30 22ZM22 50l8-3 8 3"/></svg>
+    <div class="code">TSA</div>
+    <div class="sub">Taipei Songshan<br>Airport<b>臺北松山機場</b></div>
+    <svg viewBox="0 0 120 70" style="width:13cqw;position:absolute;bottom:0">
+      <!-- 圓山大飯店意象：宮殿式屋頂 -->
+      <path d="M6 64h108"/><path d="M14 64V44h92v20"/><path d="M8 44q52-10 104 0"/><path d="M22 36h76"/>
+      <path d="M16 38q44-12 88 0"/><path d="M34 30h52"/><path d="M28 32q32-10 64 0"/><path d="M48 22h24"/><path d="M42 24q18-8 36 0"/><path d="M60 14v6"/>
+      <path d="M22 50v14M34 50v14M46 50v14M58 50v14M70 50v14M82 50v14M94 50v14"/>
+    </svg>
+  </div>
+
+  <div class="bezel">
+    <div class="screen">
+      <div class="top">
+        <button class="tab on" data-t="Departure">出發</button>
+        <button class="tab" data-t="Arrival">抵達</button>
+        <div class="title">臺北松山機場</div>
+        <span class="live demo" id="live">DEMO</span>
+        <div class="clock" id="clock">--:--</div>
+      </div>
+      <div class="cols">
+        <div>時間<small>Time</small></div>
+        <div id="hDest">目的地<small>Destination</small></div>
+        <div>班次<small>Flight</small></div>
+        <div>航空<small>Airline</small></div>
+        <div id="hGate">登機門<small>Gate</small></div>
+        <div>備註<small>Remarks</small></div>
+      </div>
+      <div class="rows" id="rows"></div>
+      <div class="foot"><span id="upd">—</span><span class="dots" id="dots"></span></div>
+    </div>
+  </div>
+
+  <!-- 右側：塔台 + 跑道 10 -->
+  <div class="side">
+    <svg viewBox="0 0 40 90" style="width:5.6cqw;margin-top:.6cqw">
+      <path d="M8 18h24l-3 10H11z"/><path d="M12 18l2-6h12l2 6"/><path d="M20 12V6"/><path d="M14 23h12"/>
+      <path d="M13 28l-2 6h18l-2-6"/><path d="M15 34v52M25 34v52M15 46h10M15 60h10M15 74h10M10 86h20"/>
+    </svg>
+    <svg viewBox="0 0 80 90" style="width:12cqw;position:absolute;bottom:2.8cqw">
+      <path d="M30 4 8 88M50 4l22 84"/><path d="M40 10v8M40 26v8M40 42v8M40 58v8"/>
+      <path d="M22 76h36M20 82h40"/><path d="M26 70v6M31 70v6M36 70v6M44 70v6M49 70v6M54 70v6"/>
+    </svg>
+    <div class="rwy">10</div>
+  </div>
+</div>
+
+<p class="note" id="note"></p>
+<button class="fs" id="fsBtn">全螢幕</button>
+
+<script>
+const API = '/api/tsa';
+const PER_PAGE = 6, PAGE_MS = 8000, SWITCH_MS = 32000, REFRESH_MS = 60000;
+
+const AIRLINE = {CI:'華航',BR:'長榮',B7:'立榮',AE:'華信',JL:'日航',NH:'全日空',MU:'東航',CA:'國航',FM:'上航',
+  MF:'廈航',CZ:'南航',HO:'吉祥',ZH:'深航',SC:'山航',KE:'大韓',OZ:'韓亞',TW:'德威',LJ:'真航空',ZE:'易斯達',
+  '7C':'濟州',GK:'捷星',IT:'台虎',DA:'德安'};
+const PLACE = {MZG:['澎湖','Penghu'],KNH:['金門','Kinmen'],LZN:['南竿','Nangan'],MFK:['北竿','Beigan'],
+  TTT:['臺東','Taitung'],HUN:['花蓮','Hualien'],KHH:['高雄','Kaohsiung'],TNN:['臺南','Tainan'],RMQ:['臺中','Taichung'],
+  CYI:['嘉義','Chiayi'],GNI:['綠島','Green Is.'],KYD:['蘭嶼','Orchid Is.'],CMJ:['七美','Qimei'],WOT:['望安','Wang-an'],
+  HND:['東京羽田','Tokyo Haneda'],GMP:['首爾金浦','Seoul Gimpo'],SHA:['上海虹橋','Shanghai'],PVG:['上海浦東','Shanghai'],
+  XMN:['廈門','Xiamen'],FOC:['福州','Fuzhou'],PEK:['北京首都','Beijing'],PKX:['北京大興','Beijing'],CTU:['成都','Chengdu'],
+  TFU:['成都天府','Chengdu'],CAN:['廣州','Guangzhou'],SZX:['深圳','Shenzhen'],HGH:['杭州','Hangzhou'],NKG:['南京','Nanjing'],
+  WNZ:['溫州','Wenzhou'],TSN:['天津','Tianjin'],TAO:['青島','Qingdao'],CKG:['重慶','Chongqing'],WUH:['武漢','Wuhan'],
+  TPE:['桃園','Taoyuan']};
+
+let mode = 'Departure', page = 0, isDemo = true;
+const data = {Departure:[], Arrival:[]};
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+const hm = s => s ? s.slice(11,16) : '';
+const toMin = s => { if(!s) return null; const [h,m] = s.slice(11,16).split(':').map(Number); return h*60+m; };
+
+function status(remark, sched, est){
+  const r = (remark||'').toUpperCase();
+  if (/取消|CANCEL/.test(r)) return ['取消','cxl'];
+  if (/延|DELAY/.test(r)) return ['延誤','late'];
+  if (/登機|BOARD/.test(r)) return ['登機中','board'];
+  if (/起飛|出發|DEPART/.test(r)) return ['已起飛','go'];
+  if (/抵達|到|ARRIV|LAND/.test(r)) return ['已抵達','go'];
+  if (/提前|EARLY/.test(r)) return ['提前','ok'];
+  if (est && sched && toMin(est) - toMin(sched) >= 15) return ['延誤','late'];
+  return [remark ? remark.replace(/[A-Z ]+$/,'') || '準時' : '準時','ok'];
+}
+
+function normalize(list, type){
+  const dep = type === 'Departure';
+  return list.filter(f => !f.IsCargo).map(f => {
+    const sched = dep ? f.ScheduleDepartureTime : f.ScheduleArrivalTime;
+    const est = dep ? (f.ActualDepartureTime || f.EstimatedDepartureTime) : (f.ActualArrivalTime || f.EstimatedArrivalTime);
+    const place = dep ? f.ArrivalAirportID : f.DepartureAirportID;
+    const [st, cls] = status(dep ? f.DepartureRemark : f.ArrivalRemark, sched, est);
+    return { t: hm(sched), est: est && hm(est) !== hm(sched) ? hm(est) : '', min: toMin(sched),
+      code: place, fn: (f.AirlineID||'') + (f.FlightNumber||''), al: f.AirlineID||'',
+      gate: dep ? (f.Gate||'') : (f.BaggageClaim||''), st, cls };
+  }).sort((a,b) => a.min - b.min);
+}
+
+/* 示範資料：沒有連上 API 時，用接近真實的松山航線排出相對於現在時間的班表 */
+function demo(type){
+  const now = new Date(); const base = now.getHours()*60 + now.getMinutes();
+  const dep = [[-25,'B7','8603','KNH','5','已起飛','go'],[-12,'AE','7953','MZG','3','已起飛','go'],[-4,'BR','190','HND','11','登機中','board'],
+    [6,'CI','260','GMP','9','登機中','board'],[14,'B7','9071','TTT','2','準時','ok'],[22,'MU','5006','SHA','12','準時','ok'],
+    [31,'AE','1271','LZN','4','延誤','late'],[40,'B7','8705','MZG','6','準時','ok'],[52,'JL','96','HND','10','準時','ok'],
+    [63,'MF','882','XMN','8','準時','ok'],[71,'AE','391','HUN','1','準時','ok'],[85,'NH','854','HND','11','準時','ok'],
+    [98,'B7','8609','KNH','5','取消','cxl'],[110,'CA','186','PEK','12','準時','ok']];
+  const arr = [[-30,'B7','8602','KNH','2','已抵達','go'],[-18,'JL','97','HND','1','已抵達','go'],[-6,'AE','7952','MZG','3','已抵達','go'],
+    [5,'BR','189','HND','1','準時','ok'],[13,'CI','261','GMP','2','準時','ok'],[24,'B7','9072','TTT','3','延誤','late'],
+    [35,'FM','801','SHA','1','準時','ok'],[47,'AE','1272','LZN','3','準時','ok'],[58,'MF','881','XMN','2','準時','ok'],
+    [69,'NH','853','HND','1','準時','ok'],[80,'B7','8706','MZG','3','準時','ok'],[95,'CA','185','PEK','2','準時','ok']];
+  return (type==='Departure'?dep:arr).map(([o,al,n,code,gate,st,cls]) => {
+    const m = ((base+o)%1440+1440)%1440;
+    return {t:`${pad(Math.floor(m/60))}:${pad(m%60)}`, est: cls==='late'?`${pad(Math.floor((m+35)%1440/60))}:${pad((m+35)%60)}`:'',
+      min:base+o, code, fn:al+n, al, gate, st, cls};
+  });
+}
+
+async function load(){
+  try{
+    const res = await Promise.all(['Departure','Arrival'].map(t =>
+      fetch(`${API}?type=${t}`,{cache:'no-store'}).then(r => { if(!r.ok) throw r.status; return r.json(); })));
+    data.Departure = normalize(res[0].flights, 'Departure');
+    data.Arrival = normalize(res[1].flights, 'Arrival');
+    isDemo = false;
+  }catch(e){
+    data.Departure = demo('Departure'); data.Arrival = demo('Arrival'); isDemo = true;
+  }
+  const live = $('live'); live.textContent = isDemo ? 'DEMO' : 'LIVE'; live.classList.toggle('demo', isDemo);
+  $('note').innerHTML = isDemo
+    ? '目前顯示<b>示範資料</b>（班次為松山常見航線，時間依現在排列）。部署到 Vercel 並設定 <code>TDX_CLIENT_ID</code> / <code>TDX_CLIENT_SECRET</code> 後會自動切換為 TDX 即時航班。'
+    : '資料來源：交通部 TDX 運輸資料流通服務・機場即時航班（FIDS），每 60 秒更新。';
+  const d = new Date(); $('upd').textContent = `UPDATED ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} · ${isDemo?'DEMO DATA':'SOURCE: TDX'}`;
+  render(false);
+}
+
+function visible(){
+  const now = new Date(); const cur = now.getHours()*60 + now.getMinutes();
+  const list = data[mode];
+  let i = list.findIndex(f => f.min >= cur - 20);
+  if (i < 0) i = Math.max(0, list.length - PER_PAGE);
+  return list.slice(i, i + PER_PAGE*3);
+}
+
+function render(animate = true){
+  const list = visible();
+  const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
+  if (page >= pages) page = 0;
+  const slice = list.slice(page*PER_PAGE, page*PER_PAGE + PER_PAGE);
+  const dep = mode === 'Departure';
+  $('hDest').innerHTML = dep ? '目的地<small>Destination</small>' : '出發地<small>Origin</small>';
+  $('hGate').innerHTML = dep ? '登機門<small>Gate</small>' : '行李<small>Baggage</small>';
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === mode));
+  const rows = $('rows');
+  if (!slice.length){ rows.innerHTML = '<div class="empty-msg">目前沒有航班資料</div>'; }
+  else rows.innerHTML = slice.map((f,i) => {
+    const [zh,en] = PLACE[f.code] || [f.code||'—',''];
+    return `<div class="row${animate?' flip':''}" style="animation-delay:${i*70}ms">
+      <div class="t">${f.t}${f.est?`<i>→${f.est}</i>`:''}</div>
+      <div class="dest">${zh}<small>${en}</small></div>
+      <div class="fn">${f.fn}</div>
+      <div class="al">${f.al}<small>${AIRLINE[f.al]||''}</small></div>
+      <div class="gate${f.gate?'':' empty'}">${f.gate||'—'}</div>
+      <div class="st ${f.cls}">${f.st}</div></div>`;
+  }).join('') + '<div class="row" style="visibility:hidden"></div>'.repeat(Math.max(0, PER_PAGE - slice.length));
+  $('dots').innerHTML = Array.from({length:pages},(_,i)=>`<span class="${i===page?'on':''}"></span>`).join('');
+}
+
+function tick(){ const d = new Date(); $('clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => { mode = b.dataset.t; page = 0; render(); });
+setInterval(() => { page++; render(); }, PAGE_MS);
+setInterval(() => { mode = mode === 'Departure' ? 'Arrival' : 'Departure'; page = 0; render(); }, SWITCH_MS);
+setInterval(load, REFRESH_MS);
+setInterval(tick, 1000);
+$('fsBtn').onclick = async () => {
+  document.body.classList.add('full');
+  try { await document.documentElement.requestFullscreen(); } catch(e){}
+};
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) document.body.classList.remove('full'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.body.classList.remove('full'); });
+
+tick(); load();
+</script>
+</body>
+</html>
