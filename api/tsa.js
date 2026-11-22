@@ -28,9 +28,52 @@ async function getToken() {
   return tokenCache.token;
 }
 
+// 台灣可選機場（IATA 代碼）
+const AIRPORTS = ['TSA', 'TPE', 'KHH', 'RMQ', 'TNN', 'HUN', 'TTT', 'KNH', 'MZG'];
+let metaCache = { data: null, exp: 0 };
+
+// /api/tsa?meta=1 → 全世界機場與航空公司的中英文名稱（快取 24 小時）
+async function getMeta(headers) {
+  if (metaCache.data && Date.now() < metaCache.exp) return metaCache.data;
+  const base = 'https://tdx.transportdata.tw/api/basic/v2/Air/';
+  const get = async (path) => {
+    const r = await fetch(base + path + '?$format=JSON', { headers });
+    if (!r.ok) throw new Error('TDX ' + r.status);
+    return r.json();
+  };
+  const airports = await get('Airport');
+  await new Promise((r) => setTimeout(r, 1200));
+  const airlines = await get('Airline');
+  const data = { airports: {}, airlines: {} };
+  airports.forEach((x) => {
+    const n = x.AirportName || {};
+    data.airports[x.AirportID] = [n.Zh_tw || n.En || x.AirportID, n.En || ''];
+  });
+  airlines.forEach((x) => {
+    const n = x.AirlineName || {};
+    data.airlines[x.AirlineID] = n.Zh_tw || n.En || x.AirlineID;
+  });
+  metaCache = { data, exp: Date.now() + 24 * 3600 * 1000 };
+  return data;
+}
+
 module.exports = async function handler(req, res) {
+  if (req.query.meta) {
+    try {
+      const token = await getToken();
+      const headers = { 'Accept-Encoding': 'gzip' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const data = await getMeta(headers);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 's-maxage=3600');
+      return res.status(200).json(data);
+    } catch (e) {
+      return res.status(500).json({ error: String(e.message || e) });
+    }
+  }
   const type = req.query.type === 'Arrival' ? 'Arrival' : 'Departure';
-  const url = `https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/${type}/TSA?$format=JSON`;
+  const airport = AIRPORTS.includes(req.query.airport) ? req.query.airport : 'TSA';
+  const url = `https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/${type}/${airport}?$format=JSON`;
 
   try {
     const token = await getToken();
@@ -50,7 +93,7 @@ module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     // CDN 快取 60 秒，避免每台看板都打 TDX
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
-    res.status(200).json({ type, updated: new Date().toISOString(), flights: list });
+    res.status(200).json({ type, airport, updated: new Date().toISOString(), flights: list });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

@@ -87,6 +87,16 @@
   .dots span{display:inline-block;width:.8cqw;height:.8cqw;border-radius:50%;background:#33457d;margin-left:.4cqw}
   .dots span.on{background:#ffe27a}
   .empty-msg{flex:1;display:flex;align-items:center;justify-content:center;font-size:2.2cqw;color:#9fc0ff}
+  .title{position:relative;cursor:pointer;white-space:nowrap}
+  .title::after{content:" ▾";font-size:1.6cqw;color:#9fc0ff}
+  .menu{display:none;position:absolute;z-index:5;left:1.2cqw;top:5.2cqw;background:#06115a;border:.15cqw solid #4c7dff;border-radius:.6cqw;
+        padding:.4cqw;min-width:26cqw;box-shadow:0 1cqw 2cqw rgba(0,0,0,.5)}
+  .menu.open{display:block}
+  .menu button{display:flex;width:100%;align-items:center;gap:1cqw;background:transparent;border:0;color:#fff;font:700 2cqw "Noto Sans TC";
+        padding:.5cqw .9cqw;border-radius:.4cqw;cursor:pointer;text-align:left}
+  .menu button b{font-family:"Barlow Condensed";font-size:2.2cqw;color:#ffe27a;min-width:5cqw}
+  .menu button:hover{background:rgba(255,255,255,.14)}
+  .menu button.on{background:#fff;color:var(--scr2)}.menu button.on b{color:var(--scr2)}
   .note{max-width:980px;font-size:13px;color:#333;text-align:center;line-height:1.6}
   .note code{background:rgba(0,0,0,.08);padding:1px 5px;border-radius:4px}
   .fs{position:fixed;right:14px;bottom:14px;border:0;border-radius:999px;padding:8px 14px;font:600 13px "Noto Sans TC";
@@ -102,8 +112,8 @@
   <!-- 左側：TSA 識別 + 圓山大飯店剪影 -->
   <div class="side">
     <svg viewBox="0 0 60 60" style="width:7cqw;margin-top:.6cqw"><path d="M30 6v48M30 22 8 34v4l22-7 22 7v-4L30 22ZM22 50l8-3 8 3"/></svg>
-    <div class="code">TSA</div>
-    <div class="sub">Taipei Songshan<br>Airport<b>臺北松山機場</b></div>
+    <div class="code" id="acode">TSA</div>
+    <div class="sub" id="asub">Taipei Songshan<br>Airport<b>臺北松山機場</b></div>
     <svg viewBox="0 0 120 70" style="width:13cqw;position:absolute;bottom:0">
       <!-- 圓山大飯店意象：宮殿式屋頂 -->
       <path d="M6 64h108"/><path d="M14 64V44h92v20"/><path d="M8 44q52-10 104 0"/><path d="M22 36h76"/>
@@ -117,7 +127,7 @@
       <div class="top">
         <button class="tab on" data-t="Departure">出發</button>
         <button class="tab" data-t="Arrival">抵達</button>
-        <div class="title">臺北松山機場</div>
+        <div class="title" id="title">臺北松山機場</div>
         <span class="live demo" id="live">DEMO</span>
         <div class="clock" id="clock">--:--</div>
       </div>
@@ -129,6 +139,7 @@
         <div id="hGate">登機門<small>Gate</small></div>
         <div>備註<small>Remarks</small></div>
       </div>
+      <div class="menu" id="menu"></div>
       <div class="rows" id="rows"></div>
       <div class="foot"><span id="upd">—</span><span class="dots" id="dots"></span></div>
     </div>
@@ -144,7 +155,7 @@
       <path d="M30 4 8 88M50 4l22 84"/><path d="M40 10v8M40 26v8M40 42v8M40 58v8"/>
       <path d="M22 76h36M20 82h40"/><path d="M26 70v6M31 70v6M36 70v6M44 70v6M49 70v6M54 70v6"/>
     </svg>
-    <div class="rwy">10</div>
+    <div class="rwy" id="arwy">10</div>
   </div>
 </div>
 
@@ -153,12 +164,24 @@
 
 <script>
 const API = '/api/tsa';
-const PER_PAGE = 6, PAGE_MS = 8000, SWITCH_MS = 32000, REFRESH_MS = 60000;
+const AIRPORTS = [
+  ['TSA','臺北松山機場','Taipei Songshan<br>Airport','10'],
+  ['TPE','臺灣桃園國際機場','Taiwan Taoyuan<br>International Airport','05'],
+  ['KHH','高雄國際機場','Kaohsiung<br>International Airport','09'],
+  ['RMQ','臺中國際機場','Taichung<br>International Airport','18'],
+  ['TNN','臺南機場','Tainan<br>Airport','18'],
+  ['HUN','花蓮機場','Hualien<br>Airport','03'],
+  ['TTT','臺東豐年機場','Taitung<br>Airport','04'],
+  ['KNH','金門尚義機場','Kinmen<br>Airport','06'],
+  ['MZG','澎湖馬公機場','Penghu<br>Magong Airport','02'],
+];
+let airport = (()=>{try{const a=localStorage.getItem('airport');return AIRPORTS.find(x=>x[0]===a)?a:'TSA'}catch(e){return 'TSA'}})();
+const PER_PAGE = 6, PAGE_MS = 8000, SWITCH_MS = 40000, REFRESH_MS = 60000;
 
-const AIRLINE = {CI:'華航',BR:'長榮',B7:'立榮',AE:'華信',JL:'日航',NH:'全日空',MU:'東航',CA:'國航',FM:'上航',
+let AIRLINE = {CI:'華航',BR:'長榮',B7:'立榮',AE:'華信',JL:'日航',NH:'全日空',MU:'東航',CA:'國航',FM:'上航',
   MF:'廈航',CZ:'南航',HO:'吉祥',ZH:'深航',SC:'山航',KE:'大韓',OZ:'韓亞',TW:'德威',LJ:'真航空',ZE:'易斯達',
   '7C':'濟州',GK:'捷星',IT:'台虎',DA:'德安'};
-const PLACE = {MZG:['澎湖','Penghu'],KNH:['金門','Kinmen'],LZN:['南竿','Nangan'],MFK:['北竿','Beigan'],
+let PLACE = {MZG:['澎湖','Penghu'],KNH:['金門','Kinmen'],LZN:['南竿','Nangan'],MFK:['北竿','Beigan'],
   TTT:['臺東','Taitung'],HUN:['花蓮','Hualien'],KHH:['高雄','Kaohsiung'],TNN:['臺南','Tainan'],RMQ:['臺中','Taichung'],
   CYI:['嘉義','Chiayi'],GNI:['綠島','Green Is.'],KYD:['蘭嶼','Orchid Is.'],CMJ:['七美','Qimei'],WOT:['望安','Wang-an'],
   HND:['東京羽田','Tokyo Haneda'],GMP:['首爾金浦','Seoul Gimpo'],SHA:['上海虹橋','Shanghai'],PVG:['上海浦東','Shanghai'],
@@ -221,7 +244,7 @@ function demo(type){
 async function load(){
   try{
     const res = await Promise.all(['Departure','Arrival'].map(t =>
-      fetch(`${API}?type=${t}`,{cache:'no-store'}).then(r => { if(!r.ok) throw r.status; return r.json(); })));
+      fetch(`${API}?type=${t}&airport=${airport}`,{cache:'no-store'}).then(r => { if(!r.ok) throw r.status; return r.json(); })));
     data.Departure = normalize(res[0].flights, 'Departure');
     data.Arrival = normalize(res[1].flights, 'Arrival');
     isDemo = false;
@@ -241,7 +264,7 @@ function visible(){
   const list = data[mode];
   let i = list.findIndex(f => f.min >= cur - 20);
   if (i < 0) i = Math.max(0, list.length - PER_PAGE);
-  return list.slice(i, i + PER_PAGE*3);
+  return list.slice(i, i + PER_PAGE*5);
 }
 
 function render(animate = true){
@@ -261,13 +284,37 @@ function render(animate = true){
       <div class="t">${f.t}${f.est?`<i>→${f.est}</i>`:''}</div>
       <div class="dest">${zh}<small>${en}</small></div>
       <div class="fn">${f.fn}</div>
-      <div class="al">${f.al}<small>${AIRLINE[f.al]||''}</small></div>
+      <div class="al">${f.al}<small>${(AIRLINE[f.al]||'').slice(0,4)}</small></div>
       <div class="gate${f.gate?'':' empty'}">${f.gate||'—'}</div>
       <div class="st ${f.cls}">${f.st}</div></div>`;
   }).join('') + '<div class="row" style="visibility:hidden"></div>'.repeat(Math.max(0, PER_PAGE - slice.length));
   $('dots').innerHTML = Array.from({length:pages},(_,i)=>`<span class="${i===page?'on':''}"></span>`).join('');
 }
 
+function applyAirport(){
+  const a = AIRPORTS.find(x=>x[0]===airport);
+  $('title').textContent = a[1]; $('acode').textContent = a[0];
+  $('asub').innerHTML = a[2] + '<b>' + a[1] + '</b>'; $('arwy').textContent = a[3];
+  document.title = a[0] + ' ' + a[1] + '即時航班看板';
+  $('menu').innerHTML = AIRPORTS.map(x=>`<button data-a="${x[0]}" class="${x[0]===airport?'on':''}"><b>${x[0]}</b>${x[1]}</button>`).join('');
+}
+$('title').onclick = e => { e.stopPropagation(); $('menu').classList.toggle('open'); };
+document.addEventListener('click', () => $('menu').classList.remove('open'));
+$('menu').onclick = e => {
+  const b = e.target.closest('[data-a]'); if(!b) return;
+  airport = b.dataset.a; try{localStorage.setItem('airport',airport)}catch(err){}
+  data.Departure = []; data.Arrival = []; page = 0; mode = 'Departure';
+  applyAirport(); render(); load();
+};
+async function loadMeta(){
+  try{
+    const r = await fetch(API + '?meta=1'); if(!r.ok) return;
+    const m = await r.json();
+    Object.keys(m.airports||{}).forEach(k => { if(!PLACE[k]) PLACE[k] = m.airports[k]; });
+    Object.keys(m.airlines||{}).forEach(k => { if(!AIRLINE[k]) AIRLINE[k] = m.airlines[k]; });
+    render(false);
+  }catch(e){}
+}
 function tick(){ const d = new Date(); $('clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => { mode = b.dataset.t; page = 0; render(); });
@@ -282,7 +329,7 @@ $('fsBtn').onclick = async () => {
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) document.body.classList.remove('full'); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') document.body.classList.remove('full'); });
 
-tick(); load();
+applyAirport(); tick(); load(); loadMeta();
 </script>
 </body>
 </html>
