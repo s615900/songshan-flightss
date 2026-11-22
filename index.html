@@ -86,6 +86,9 @@
         font-family:"Barlow Condensed";font-size:1.3cqw;color:#9fc0ff}
   .dots span{display:inline-block;width:.8cqw;height:.8cqw;border-radius:50%;background:#33457d;margin-left:.4cqw}
   .dots span.on{background:#ffe27a}
+  .autob{background:transparent;border:.12cqw solid #4c7dff;border-radius:.4cqw;color:#cfe3ff;font:inherit;font-family:"Noto Sans TC";font-weight:700;font-size:1.3cqw;padding:.1cqw .8cqw;margin-right:1cqw;cursor:pointer}
+  .autob.on{border-color:#ffe27a;color:#ffe27a}
+  .autob:hover{background:rgba(255,255,255,.12)}
   .empty-msg{flex:1;display:flex;align-items:center;justify-content:center;font-size:2.2cqw;color:#9fc0ff}
   .title{position:relative;cursor:pointer;white-space:nowrap}
   .title::after{content:" ▾";font-size:1.6cqw;color:#9fc0ff}
@@ -141,7 +144,7 @@
       </div>
       <div class="menu" id="menu"></div>
       <div class="rows" id="rows"></div>
-      <div class="foot"><span id="upd">—</span><span class="dots" id="dots"></span></div>
+      <div class="foot"><span id="upd">—</span><span><button class="autob on" id="auto">⏸ 關閉自動輪播</button><span class="dots" id="dots"></span></span></div>
     </div>
   </div>
 
@@ -190,7 +193,7 @@ let PLACE = {MZG:['澎湖','Penghu'],KNH:['金門','Kinmen'],LZN:['南竿','Nang
   WNZ:['溫州','Wenzhou'],TSN:['天津','Tianjin'],TAO:['青島','Qingdao'],CKG:['重慶','Chongqing'],WUH:['武漢','Wuhan'],
   TPE:['桃園','Taoyuan']};
 
-let mode = 'Departure', page = 0, isDemo = true;
+let mode = 'Departure', page = 0, isDemo = true, auto = true;
 const data = {Departure:[], Arrival:[]};
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2,'0');
@@ -317,9 +320,24 @@ async function loadMeta(){
 }
 function tick(){ const d = new Date(); $('clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 
-document.querySelectorAll('.tab').forEach(b => b.onclick = () => { mode = b.dataset.t; page = 0; render(); });
-setInterval(() => { page++; render(); }, PAGE_MS);
-setInterval(() => { mode = mode === 'Departure' ? 'Arrival' : 'Departure'; page = 0; render(); }, SWITCH_MS);
+function setAuto(v){ auto = v; const b = $('auto'); b.classList.toggle('on', v); b.textContent = v ? '⏸ 關閉自動輪播' : '▶ 開啟自動輪播'; }
+$('auto').onclick = () => setAuto(!auto);
+const pagesOf = () => Math.max(1, Math.ceil(visible().length / PER_PAGE));
+const otherMode = () => mode === 'Departure' ? 'Arrival' : 'Departure';
+function nextPage(){ if (page + 1 >= pagesOf()) { mode = otherMode(); page = 0; } else page++; render(); }
+function prevPage(){ if (page > 0) page--; else { mode = otherMode(); page = pagesOf() - 1; } render(); }
+// 左右滑動換頁（手機觸控、滑鼠拖曳皆可）；左滑＝下一頁、右滑＝上一頁
+(() => { const el = document.querySelector('.screen'); let x0 = null, y0 = 0;
+  el.style.touchAction = 'pan-y'; el.style.userSelect = 'none';
+  el.addEventListener('pointerdown', e => { x0 = e.clientX; y0 = e.clientY; });
+  el.addEventListener('pointerup', e => { if (x0 === null) return; const dx = e.clientX - x0, dy = e.clientY - y0; x0 = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) { setAuto(false); dx < 0 ? nextPage() : prevPage(); } });
+  el.addEventListener('pointercancel', () => { x0 = null; });
+  document.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') { setAuto(false); prevPage(); } if (e.key === 'ArrowRight') { setAuto(false); nextPage(); } });
+})();
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => { setAuto(false); mode = b.dataset.t; page = 0; render(); });
+setInterval(() => { if (auto) { page++; render(); } }, PAGE_MS);
+setInterval(() => { if (!auto) return; mode = mode === 'Departure' ? 'Arrival' : 'Departure'; page = 0; render(); }, SWITCH_MS);
 setInterval(load, REFRESH_MS);
 setInterval(tick, 1000);
 $('fsBtn').onclick = async () => {
