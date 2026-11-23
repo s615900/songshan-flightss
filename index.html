@@ -181,6 +181,7 @@ const AIRPORTS = [
   ['MZG','澎湖馬公機場','Penghu<br>Magong Airport','02'],
 ];
 let airport = (()=>{try{const a=localStorage.getItem('airport');return AIRPORTS.find(x=>x[0]===a)?a:'TSA'}catch(e){return 'TSA'}})();
+const GONE_MIN = 30;
 const PER_PAGE = 6, PAGE_MS = 8000, SWITCH_MS = 40000, REFRESH_MS = 60000;
 
 let AIRLINE = {CI:'華航',BR:'長榮',B7:'立榮',AE:'華信',JL:'日航',NH:'全日空',MU:'東航',CA:'國航',FM:'上航',
@@ -214,17 +215,36 @@ function status(remark, sched, est){
   return [remark ? remark.replace(/[A-Z ]+$/,'') || '準時' : '準時','ok'];
 }
 
+// 共用班號：同一架飛機會被多家航空公司各賣一個班號，TDX 全都列出來。
+// 只有「實際營運」的那筆帶有機型（AcType），所以同組裡優先留有機型的；
+// 同組都沒機型才留第一筆。分組條件含時間、地點、登機門/行李、櫃檯、航廈，避免誤合併不同班機。
+function dedupe(list, dep){
+  const groups = new Map();
+  list.forEach(f => {
+    const k = [dep ? f.ScheduleDepartureTime : f.ScheduleArrivalTime, dep ? f.ArrivalAirportID : f.DepartureAirportID,
+      ((dep ? f.Gate : f.BaggageClaim)||'').trim(), f.CheckCounter||'', f.Terminal||''].join('|');
+    (groups.get(k) || groups.set(k, []).get(k)).push(f);
+  });
+  const out = [];
+  groups.forEach(g => { const op = g.filter(f => f.AcType); out.push(...(op.length ? op : [g[0]])); });
+  return out;
+}
+
 function normalize(list, type){
   const dep = type === 'Departure';
-  return list.filter(f => !f.IsCargo).map(f => {
+  const t0 = new Date(); t0.setHours(0,0,0,0);
+  // 相對於「今天 00:00」的分鐘數，跨日班次才不會和今天的混在一起
+  const absMin = s => s ? Math.round((new Date(s.slice(0,16)) - t0) / 60000) : null;
+  return dedupe(list.filter(f => !f.IsCargo), dep).map(f => {
     const sched = dep ? f.ScheduleDepartureTime : f.ScheduleArrivalTime;
     const est = dep ? (f.ActualDepartureTime || f.EstimatedDepartureTime) : (f.ActualArrivalTime || f.EstimatedArrivalTime);
     const place = dep ? f.ArrivalAirportID : f.DepartureAirportID;
     const [st, cls] = status(dep ? f.DepartureRemark : f.ArrivalRemark, sched, est);
-    return { t: hm(sched), est: est && hm(est) !== hm(sched) ? hm(est) : '', min: toMin(sched),
+    return { t: hm(sched), est: est && hm(est) !== hm(sched) ? hm(est) : '', min: absMin(sched), emin: absMin(est || sched),
       code: place, fn: (f.AirlineID||'') + (f.FlightNumber||''), al: f.AirlineID||'',
-      gate: dep ? (f.Gate||'') : (f.BaggageClaim||''), st, cls };
-  }).sort((a,b) => a.min - b.min);
+      gate: ((dep ? f.Gate : f.BaggageClaim)||'').trim(), st, cls };
+  }).filter(f => f.min !== null && f.min >= -120 && f.min < 2*1440) // 只留今天與明天
+    .sort((a,b) => a.min - b.min);
 }
 
 /* 示範資料：沒有連上 API 時，用接近真實的松山航線排出相對於現在時間的班表 */
@@ -242,7 +262,7 @@ function demo(type){
   return (type==='Departure'?dep:arr).map(([o,al,n,code,gate,st,cls]) => {
     const m = ((base+o)%1440+1440)%1440;
     return {t:`${pad(Math.floor(m/60))}:${pad(m%60)}`, est: cls==='late'?`${pad(Math.floor((m+35)%1440/60))}:${pad((m+35)%60)}`:'',
-      min:base+o, code, fn:al+n, al, gate, st, cls};
+      min:base+o, emin:base+o+(cls==='late'?35:0), code, fn:al+n, al, gate, st, cls};
   });
 }
 
@@ -266,10 +286,11 @@ async function load(){
 
 function visible(){
   const now = new Date(); const cur = now.getHours()*60 + now.getMinutes();
-  const list = data[mode];
-  let i = list.findIndex(f => f.min >= cur - 20);
-  if (i < 0) i = Math.max(0, list.length - PER_PAGE);
-  return list.slice(i, i + PER_PAGE*5);
+  // 已起飛／已抵達：預定時間後再保留 30 分鐘（08:00 的班次顯示到 08:30）才消失
+  // 其他班次：（含延誤後的）預計時間已過就消失；登機中的先留著
+  const list = data[mode].filter(f => f.cls === 'go' ? f.min + GONE_MIN >= cur
+    : f.cls === 'board' || (f.emin ?? f.min) >= cur);
+  return list.slice(0, PER_PAGE*5);
 }
 
 function render(animate = true){
